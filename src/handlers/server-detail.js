@@ -1057,8 +1057,8 @@ export async function handleServerDetail(request, env, sys, viewId) {
       
       // 根据数据量动态调整采样，防止图表过于拥挤
       let sampledData = dataPoints;
-      if (dataPoints.length > 200) {
-        const step = Math.ceil(dataPoints.length / 200);
+      if (dataPoints.length > 500) {
+        const step = Math.ceil(dataPoints.length / 500);
         sampledData = dataPoints.filter((_, i) => i % step === 0);
       }
       
