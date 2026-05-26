@@ -41,7 +41,7 @@ export async function handleAdminUI(request, env, sys) {
           <td>
             <div style="display:flex; align-items:center; gap:8px;">
               ${flagHtml}
-              <strong style="color:var(--text-primary);">${s.name}</strong>
+              <a href="/server/${s.id}" style="color:var(--text-primary); font-weight:bold; text-decoration:none; hover:text:var(--accent-green);">${s.name}</a>
             </div>
           </td>
           <td><span class="group-tag">${s.server_group || '默认分组'}</span></td>
