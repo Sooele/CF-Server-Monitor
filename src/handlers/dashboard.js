@@ -3,7 +3,7 @@ import { getLatestMetrics, getLatestMetricsForAllServers, getAllServers } from '
 import { getServerDetail } from '../utils/cache.js';
 
 export async function handleServerAPI(request, env, sys) {
-  const isLoggedIn = checkAuth(request, env);
+  const isLoggedIn = await checkAuth(request, env, sys);
   
   if (sys.is_public !== 'true' && !isLoggedIn) {
     return simpleAuthResponse();
@@ -58,7 +58,7 @@ export async function handleServerAPI(request, env, sys) {
 }
 
 export async function handleServersAPI(request, env, sys) {
-  const isLoggedIn = checkAuth(request, env);
+  const isLoggedIn = await checkAuth(request, env, sys);
   
   // 如果关闭了公开访问，需要登录
   if (sys.is_public !== 'true' && !isLoggedIn) {

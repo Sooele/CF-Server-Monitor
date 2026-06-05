@@ -170,7 +170,10 @@ const translations = reactive({
     pingMode: 'Ping Mode',
     tcpWarning: 'If TCP mode is not compatible, please switch to HTTP mode',
     copied: 'Copied!',
-    close: 'Close'
+    close: 'Close',
+    jwtSecretTip: 'JWT secret is used to generate and verify login tokens. Use a random string of at least 32 characters.',
+    jwtSecretMinLength: 'JWT Secret must be at least 32 characters long',
+    jwtSecretNoWhitespace: 'JWT Secret should not contain whitespace'
   },
   zh: {
     theme: '主题',
@@ -341,7 +344,10 @@ const translations = reactive({
     pingMode: 'Ping方式',
     tcpWarning: '如果TCP模式不兼容，请切换到HTTP模式',
     copied: '已复制！',
-    close: '关闭'
+    close: '关闭',
+    jwtSecretTip: 'JWT密钥用于生成和验证登录token。使用至少32个字符的随机字符串。',
+    jwtSecretMinLength: 'JWT Secret至少需要32个字符',
+    jwtSecretNoWhitespace: 'JWT Secret不应包含空格'
   }
 })
 

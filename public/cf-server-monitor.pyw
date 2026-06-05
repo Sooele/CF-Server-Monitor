@@ -19,15 +19,13 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-APP_NAME = "CF-Server-Monitor-Pro"
+APP_NAME = "CF-Server-Monitor"
 TASK_NAME = "CFProbe"
 
-BASE_DIR = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / APP_NAME
-CONFIG_FILE = BASE_DIR / "config.json"
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_FILE = BASE_DIR / "cf_probe_config.json"
 LOG_FILE = BASE_DIR / "cf_probe.log"
-AGENT_FILE = BASE_DIR / "cf_probe_cn.py"
-ICON_FILE = BASE_DIR / "cf_probe.ico"
-PNG_ICON_FILE = BASE_DIR / "cf_probe.png"
+AGENT_FILE = Path(__file__).resolve()
 
 DEFAULT_INTERVAL = 60
 MAX_LOG_SIZE = 2 * 1024 * 1024
@@ -38,13 +36,13 @@ DEFAULT_CONFIG = {
     "secret": "连接密匙",
     "worker_url": "上传网站",
     "report_interval": 60,
-    "silent_start": True,
+    "silent_start": False,
     "ping_type": "tcp",
 }
 
-CT_NODES = ["gd-ct-dualstack.ip.zstaticcdn.com"]
-CU_NODES = ["gd-cu-dualstack.ip.zstaticcdn.com"]
-CM_NODES = ["gd-cm-dualstack.ip.zstaticcdn.com"]
+CT_NODE = "gd-ct-dualstack.ip.zstaticcdn.com"
+CU_NODE = "gd-cu-dualstack.ip.zstaticcdn.com"
+CM_NODE = "gd-cm-dualstack.ip.zstaticcdn.com"
 BD_NODE = "lf3-ips.zstaticcdn.com"
 
 log_queue = queue.Queue()
@@ -177,32 +175,6 @@ def ensure_deps():
     return True
 
 
-def generate_default_icons():
-    try:
-        from PIL import Image, ImageDraw
-
-        ensure_base_dir()
-
-        img = Image.new("RGBA", (256, 256), (22, 119, 255, 255))
-        draw = ImageDraw.Draw(img)
-
-        draw.rounded_rectangle((18, 18, 238, 238), radius=48, fill=(22, 119, 255, 255))
-        draw.ellipse((64, 48, 192, 176), fill=(255, 255, 255, 255))
-        draw.rectangle((118, 26, 138, 214), fill=(22, 119, 255, 255))
-        draw.ellipse((182, 52, 220, 90), fill=(52, 199, 89, 255))
-
-        img.save(PNG_ICON_FILE, format="PNG")
-        img.save(
-            ICON_FILE,
-            format="ICO",
-            sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
-        )
-        return True
-    except Exception as e:
-        log(f"生成图标失败: {e}")
-        return False
-
-
 def load_config():
     if CONFIG_FILE.exists():
         with CONFIG_FILE.open("r", encoding="utf-8") as f:
@@ -220,12 +192,7 @@ def save_config(config):
 
 
 def install_self():
-    ensure_base_dir()
-    src = Path(__file__).resolve()
-    dst = AGENT_FILE.resolve()
-    if src != dst:
-        shutil.copy2(str(src), str(dst))
-    return dst
+    return Path(__file__).resolve()
 
 
 def find_pythonw():
@@ -244,19 +211,24 @@ def task_exists():
 
 
 def create_startup_task():
-    install_self()
-    generate_default_icons()
-
     cfg = load_config()
     pythonw = find_pythonw()
+
+    current_script = Path(__file__).resolve()
+
     task_args = "gui --minimized" if cfg.get("silent_start", True) else "gui"
-    task_run = f'\\"{pythonw}\\" \\"{AGENT_FILE}\\" {task_args}'
+
+    task_run = (
+        f'\\"{pythonw}\\" '
+        f'\\"{current_script}\\" '
+        f'{task_args}'
+    )
 
     cmd = (
         f'schtasks /Create '
         f'/TN "{TASK_NAME}" '
         f'/SC ONLOGON '
-        f'/RL HIGHEST '
+        f'/RL LIMITED '
         f'/TR "{task_run}" '
         f'/F'
     )
@@ -282,7 +254,7 @@ def http_post_json(url, payload):
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "CF-Server-Monitor-Pro-Windows-CN",
+            "User-Agent": "CF-Server-Monitor-Windows-CN",
         },
     )
     try:
@@ -298,7 +270,7 @@ def fetch_text(url, timeout=3):
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "CF-Server-Monitor-Pro-Windows-CN"},
+            headers={"User-Agent": "CF-Server-Monitor-Windows-CN"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="ignore").strip()
@@ -328,7 +300,7 @@ def get_http_ping(host):
     try:
         req = urllib.request.Request(
             f"http://{host}",
-            headers={"User-Agent": "CF-Server-Monitor-Pro-Windows-CN"},
+            headers={"User-Agent": "CF-Server-Monitor-Windows-CN"},
         )
         start = time.perf_counter()
         with urllib.request.urlopen(req, timeout=1.5) as resp:
@@ -563,9 +535,9 @@ def probe_loop(status_callback=None):
                 last_ip_check = now
 
             if now - last_ping_check >= 30 or last_ping_check == 0:
-                cache["ping_ct"] = get_ping(CT_NODES[0], ping_type)
-                cache["ping_cu"] = get_ping(CU_NODES[0], ping_type)
-                cache["ping_cm"] = get_ping(CM_NODES[0], ping_type)
+                cache["ping_ct"] = get_ping(CT_NODE, ping_type)
+                cache["ping_cu"] = get_ping(CU_NODE, ping_type)
+                cache["ping_cm"] = get_ping(CM_NODE, ping_type)
                 cache["ping_bd"] = get_ping(BD_NODE, ping_type)
                 last_ping_check = now
 
@@ -612,12 +584,6 @@ class ProbeGUI:
         self.root.title("CF服务器监控探针")
         self.root.geometry("1140x780")
         self.root.minsize(1020, 700)
-
-        generate_default_icons()
-        try:
-            self.root.iconbitmap(str(ICON_FILE))
-        except Exception:
-            pass
 
         self.config = load_config()
         self.worker_thread = None
@@ -796,10 +762,12 @@ class ProbeGUI:
     def save(self, show_msg=False):
         try:
             interval = int(self.interval_var.get().strip() or DEFAULT_INTERVAL)
+
             if interval < 5:
                 interval = 5
 
             ping_type = self.ping_type_var.get().strip().lower()
+
             if ping_type not in ("tcp", "http"):
                 ping_type = "tcp"
 
@@ -812,14 +780,24 @@ class ProbeGUI:
                 "ping_type": ping_type,
             }
 
-            if not config["server_id"] or not config["secret"] or not config["worker_url"]:
+            if (
+                not config["server_id"]
+                or not config["secret"]
+                or not config["worker_url"]
+            ):
                 if show_msg:
                     messagebox.showwarning("提示", "请填写完整配置。")
                 return False
 
+            if not config["worker_url"].startswith(("http://", "https://")):
+                if show_msg:
+                    messagebox.showwarning(
+                        "提示",
+                        "上报链接必须以 http:// 或 https:// 开头"
+                    )
+                return False
+
             save_config(config)
-            install_self()
-            generate_default_icons()
 
             if self.autostart_var.get():
                 try:
@@ -827,14 +805,52 @@ class ProbeGUI:
                 except Exception as e:
                     log(f"更新自动启动任务失败: {e}")
 
+            running = (
+                self.worker_thread
+                and self.worker_thread.is_alive()
+            )
+
+            if running:
+                log("配置已变更，正在重启探针...")
+
+                stop_event.set()
+
+                self.worker_thread.join(timeout=5)
+
+                stop_event.clear()
+
+                self.worker_thread = threading.Thread(
+                    target=probe_loop,
+                    args=(self.update_metrics,),
+                    daemon=True,
+                )
+
+                self.worker_thread.start()
+
+                log("探针已重新启动。")
+
+            else:
+                stop_event.clear()
+                self.worker_thread = threading.Thread(
+                    target=probe_loop,
+                    args=(self.update_metrics,),
+                    daemon=True,
+                )
+                self.worker_thread.start()
+                self.status_var.set("运行中")
+                log("探针已启动。")
+
             log("配置已保存。")
+
             if show_msg:
                 messagebox.showinfo("完成", "配置已保存。")
+
             return True
+
         except Exception as e:
             messagebox.showerror("错误", str(e))
             return False
-
+    
     def import_config(self):
         file_path = filedialog.askopenfilename(
             title="导入配置",
@@ -909,9 +925,14 @@ class ProbeGUI:
 
     def stop_probe(self):
         stop_event.set()
+
+        if self.worker_thread and self.worker_thread.is_alive():
+            self.worker_thread.join(timeout=5)
+
         self.status_var.set("已停止")
         self.online_var.set("离线")
         self.online_label.config(bg="#d9534f")
+
         log("已点击停止探针。")
 
     def update_metrics(self, metrics, ok, report_time):
@@ -1015,11 +1036,12 @@ class ProbeGUI:
 
 
 def load_tray_image():
-    from PIL import Image
+    from PIL import Image, ImageDraw
 
-    if not PNG_ICON_FILE.exists():
-        generate_default_icons()
-    return Image.open(PNG_ICON_FILE)
+    img = Image.new("RGBA", (64, 64), (22, 119, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((8, 8, 56, 56), fill=(255, 255, 255, 255))
+    return img
 
 
 def create_tray_icon(app):
@@ -1076,11 +1098,25 @@ def create_tray_icon(app):
 def uninstall_cli():
     delete_startup_task()
     stop_event.set()
+
+    files_to_remove = [
+        CONFIG_FILE,
+        LOG_FILE,
+    ]
+
     try:
-        if BASE_DIR.exists():
-            shutil.rmtree(str(BASE_DIR), ignore_errors=True)
+        for f in files_to_remove:
+            if f.exists():
+                f.unlink()
+
+        for i in range(1, LOG_BACKUP_COUNT + 1):
+            backup = BASE_DIR / f"cf_probe.log.{i}"
+            if backup.exists():
+                backup.unlink()
+
     except Exception as e:
-        print(f"删除目录失败: {e}")
+        print(f"清理文件失败: {e}")
+
     print("卸载完成。")
 
 
@@ -1091,7 +1127,6 @@ def run_gui(minimized=False):
         messagebox.showerror("错误", "依赖安装失败，请手动执行: pip install psutil pystray pillow")
         return
 
-    generate_default_icons()
     cfg = load_config()
     silent = bool(cfg.get("silent_start", True))
 
@@ -1113,7 +1148,7 @@ def main():
 
     cmd = sys.argv[1].lower() if len(sys.argv) >= 2 else "gui"
 
-    if cmd in ("gui", "run", "uninstall", "remove", "delete", "purge"):
+    if cmd in ("uninstall", "remove", "delete", "purge"):
         if not ensure_admin():
             print("无法获取管理员权限。")
             sys.exit(1)

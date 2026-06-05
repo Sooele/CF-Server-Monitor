@@ -780,7 +780,7 @@ body::before {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    overflow: hidden;
+    overflow: auto;
 }
 
 .table-wrapper {
@@ -940,7 +940,8 @@ body::before {
 
 .toolbar-input {
     padding: 8px 12px;
-    background: var(--input-bg);
+    background: var(--input-bg) !important;
+    background-color: var(--input-bg);
     border: 1px solid var(--input-border);
     border-radius: 4px;
     color: var(--text-primary);
@@ -948,6 +949,8 @@ body::before {
     font-size: 12px;
     width: 250px;
     transition: border-color 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .toolbar-input:focus {
@@ -1193,6 +1196,12 @@ body::before {
     z-index: 1000;
     animation: fadeIn 0.2s;
     backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay.active {
+    display: flex;
 }
 
 .modal-dialog {
@@ -1201,10 +1210,11 @@ body::before {
     border-radius: 6px;
     width: 480px;
     max-width: 90%;
-    margin: 60px auto;
+    max-height: 90vh;
     padding: 24px;
     position: relative;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
 }
 
 .modal-header {
@@ -2198,4 +2208,42 @@ body::before {
 
 @keyframes blink {
     50% { opacity: 0.5; }
+}
+
+/* --------------------------------------------------------------------------
+   42. Password Input Toggle Styles
+   -------------------------------------------------------------------------- */
+.password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-input-wrapper .form-input,
+.password-input-wrapper .login-input {
+    padding-right: 40px;
+    flex: 1;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+}
+
+.password-toggle:hover {
+    background: rgba(255, 255, 255, 0.05);
 }

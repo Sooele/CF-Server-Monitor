@@ -1,7 +1,32 @@
-import { checkAuth, authResponse } from '../middleware/auth.js';
+import { checkAuth, simpleAuthResponse, validateCredentials, generateToken } from '../middleware/auth.js';
 import { clearNotificationSettingsCache } from '../services/notification.js';
 import { getLatestMetricsForAllServers, getAllServers } from '../database/schema.js';
 import { clearServersListCache, clearServerDetailCache } from '../utils/cache.js';
+
+async function verifyTurnstileToken(token, secretKey) {
+  if (!token || !secretKey) {
+    return false;
+  }
+  
+  try {
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        secret: secretKey,
+        response: token
+      })
+    });
+    
+    const data = await response.json();
+    return data.success === true;
+  } catch (e) {
+    console.error('Turnstile verification error:', e);
+    return false;
+  }
+}
 
 function isValidUUID(id) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -12,12 +37,73 @@ function isValidName(name) {
 }
 
 export async function handleAdminAPI(request, env, sys) {
-  if (!checkAuth(request, env)) {
-    return authResponse(sys.admin_title);
-  }
-
   try {
     const data = await request.json();
+
+    if (data.action === 'login') {
+      const { username, password } = data;
+      
+      if (!username || !password) {
+        return new Response(JSON.stringify({ error: 'Missing username or password' }), { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const turnstileEnabled = sys && (sys.turnstile_enabled === 'true' || sys.turnstile_enabled === true);
+      const turnstileSecretKey = sys && sys.turnstile_secret_key || '';
+      
+      if (turnstileEnabled) {
+        const turnstileToken = request.headers.get('X-Turnstile-Token');
+        const isTurnstileVerified = await verifyTurnstileToken(turnstileToken, turnstileSecretKey);
+        
+        if (!isTurnstileVerified) {
+          return new Response(JSON.stringify({ error: 'Turnstile verification failed' }), { 
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+
+      const authHeader = 'Basic ' + btoa(username + ':' + password);
+      const mockRequest = {
+        headers: {
+          get: (key) => key === 'Authorization' ? authHeader : null
+        }
+      };
+
+      const isValid = await validateCredentials(mockRequest, env);
+      
+      if (!isValid) {
+        return new Response(JSON.stringify({ error: 'Invalid username or password' }), { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        const token = await generateToken(env, sys);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          token: token,
+          message: {
+            en: 'Login successful',
+            zh: '登录成功'
+          }
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { 
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    if (!await checkAuth(request, env, sys)) {
+      return simpleAuthResponse();
+    }
 
     if (data.action === 'get_settings') {
       return new Response(JSON.stringify({
@@ -73,7 +159,7 @@ export async function handleAdminAPI(request, env, sys) {
       const settings = data.settings || {};
 
       const APPEARANCE_FIELDS = ['site_title', 'admin_title', 'custom_bg', 'custom_head', 'custom_script'];
-      const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_bw', 'show_tf', 'tg_notify', 'tg_bot_token', 'tg_chat_id'];
+      const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_bw', 'show_tf', 'tg_notify', 'tg_bot_token', 'tg_chat_id', 'turnstile_enabled', 'turnstile_site_key', 'turnstile_secret_key', 'jwt_secret'];
 
       const appearanceOptions = {};
       for (const field of APPEARANCE_FIELDS) {

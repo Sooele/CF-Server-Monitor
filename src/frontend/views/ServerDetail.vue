@@ -227,7 +227,7 @@
 
     <Footer />
 
-    <div id="loginRequiredModal" class="modal-overlay" :style="{ display: showLoginModal ? 'block' : 'none' }">
+    <div id="loginRequiredModal" class="modal-overlay" :class="{ active: showLoginModal }">
       <div class="modal-dialog">
         <div class="modal-header">
           <div class="modal-title">$ sudo login</div>

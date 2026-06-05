@@ -9,18 +9,93 @@ import { loadSettings } from './utils/settings.js';
 import { checkAuth, simpleAuthResponse } from './middleware/auth.js';
 import { getServerDetail, getMetricsHistoryCache, setMetricsHistoryCache } from './utils/cache.js';
 
-async function fetchHistoryData(env, request, id, hours, columns) {
+async function getEncryptionKey(env) {
+  const secret = env.TURNSTILE_SECRET_KEY || env.API_SECRET || 'default_secret_key_for_turnstile_encryption';
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new Uint8Array(hash).slice(0, 32),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+  return keyMaterial;
+}
+
+async function encryptCookieData(data, env) {
+  const key = await getEncryptionKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoder = new TextEncoder();
+  const encodedData = encoder.encode(JSON.stringify(data));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv },
+    key,
+    encodedData
+  );
+  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptCookieData(encoded, env) {
+  try {
+    const key = await getEncryptionKey(env);
+    const decoded = new Uint8Array(atob(encoded).split('').map(c => c.charCodeAt(0)));
+    const iv = decoded.slice(0, 12);
+    const ciphertext = decoded.slice(12);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      ciphertext
+    );
+    const encoder = new TextDecoder();
+    return JSON.parse(encoder.decode(decrypted));
+  } catch (e) {
+    console.error('Cookie decryption error:', e);
+    return null;
+  }
+}
+
+async function verifyTurnstileToken(token, secretKey) {
+  if (!token || !secretKey) {
+    return false;
+  }
+  
+  try {
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        secret: secretKey,
+        response: token
+      })
+    });
+    
+    const data = await response.json();
+    return data.success === true;
+  } catch (e) {
+    console.error('Turnstile verification error:', e);
+    return false;
+  }
+}
+
+async function fetchHistoryData(env, request, id, hours, columns, sys = null) {
   if (!id) return new Response('Missing ID', { status: 400 });
   
-  const isLoggedIn = checkAuth(request, env);
-  const sys = await loadSettings(env.DB);
+  if (!sys) {
+    sys = await loadSettings(env.DB);
+  }
+  const isLoggedIn = await checkAuth(request, env, sys);
   
   if (sys.is_public !== 'true' && !isLoggedIn) {
     return simpleAuthResponse();
   }
   
   if (hours > 1 && !isLoggedIn) {
-    return new Response('Unauthorized', { status: 401 });
+    return new Response(JSON.stringify({ error: 'Unauthorized', code: 401 }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
   
   const server = await getServerDetail(env.DB, id, isLoggedIn);
@@ -62,8 +137,52 @@ export default {
       }
     }
 
+    const sys = await loadSettings(env.DB);
+    const turnstileEnabled = sys.turnstile_enabled === 'true';
+    const turnstileSecretKey = sys.turnstile_secret_key || '';
+
+    const bypassTurnstilePaths = [
+      '/update',
+      '/admin/api',
+      '/api/config',
+      '/favicon.ico',
+      '/logo.svg',
+      '/install.sh'
+    ];
+
+    const isApiRequest = path.startsWith('/api/') || path.startsWith('/admin/api');
+    let setTurnstileCookie = false;
+    
+    if (turnstileEnabled && isApiRequest && !bypassTurnstilePaths.includes(path)) {
+      const cookies = request.headers.get('Cookie') || '';
+      const turnstileCookie = cookies.split(';').find(c => c.trim().startsWith('turnstile_verified='));
+      
+      let hasValidCookie = false;
+      if (turnstileCookie) {
+        const encryptedData = turnstileCookie.split('=')[1];
+        const decrypted = await decryptCookieData(encryptedData, env);
+        if (decrypted && decrypted.expires && Date.now() < decrypted.expires * 1000) {
+          hasValidCookie = true;
+        }
+      }
+      
+      if (!hasValidCookie) {
+        const turnstileToken = request.headers.get('X-Turnstile-Token');
+        const isVerified = await verifyTurnstileToken(turnstileToken, turnstileSecretKey);
+        
+        if (!isVerified) {
+          return new Response(JSON.stringify({ error: 'Turnstile verification failed' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        setTurnstileCookie = true;
+      }
+    }
+
     async function handleManualCleanup() {
-      if (!checkAuth(request, env)) {
+      if (!await checkAuth(request, env, sys)) {
         return simpleAuthResponse();
       }
       
@@ -75,7 +194,7 @@ export default {
     }
 
     async function handleUpdateDatabase() {
-      if (!checkAuth(request, env)) {
+      if (!await checkAuth(request, env, sys)) {
         return simpleAuthResponse();
       }
       
@@ -87,7 +206,7 @@ export default {
     }
 
     async function handleRebuildDatabase() {
-      if (!checkAuth(request, env)) {
+      if (!await checkAuth(request, env, sys)) {
         return simpleAuthResponse();
       }
       
@@ -99,9 +218,38 @@ export default {
     }
 
     async function handleGetConfig() {
-      return new Response(JSON.stringify({}), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      let cookieAuth = false;
+      
+      if (turnstileEnabled) {
+        const cookies = request.headers.get('Cookie') || '';
+        const turnstileCookie = cookies.split(';').find(c => c.trim().startsWith('turnstile_verified='));
+        
+        if (turnstileCookie) {
+          const encryptedData = turnstileCookie.split('=')[1];
+          const decrypted = await decryptCookieData(encryptedData, env);
+          if (decrypted && decrypted.expires && Date.now() < decrypted.expires * 1000) {
+            cookieAuth = true;
+          }
+        }
+      }
+      
+      if (cookieAuth) {
+        return new Response(JSON.stringify({
+          turnstile_enabled: true,
+          turnstile_site_key: sys.turnstile_site_key || '',
+          cookie_auth: true
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } else {
+        return new Response(JSON.stringify({
+          turnstile_enabled: turnstileEnabled,
+          turnstile_site_key: sys.turnstile_site_key || '',
+          cookie_auth: false
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     const routes = [
@@ -109,16 +257,13 @@ export default {
       { method: 'GET', path: '/updateDatabase', handler: handleUpdateDatabase },
       { method: 'GET', path: '/rebuild', handler: handleRebuildDatabase },
       { method: 'POST', path: '/admin/api', handler: async () => {
-        const sys = await loadSettings(env.DB);
         return handleAdminAPI(request, env, sys);
       }},
       { method: 'POST', path: '/update', handler: () => handleUpdate(request, env, ctx) },
       { method: 'GET', path: '/api/server', handler: async () => {
-        const sys = await loadSettings(env.DB);
         return handleServerAPI(request, env, sys);
       }},
       { method: 'GET', path: '/api/servers', handler: async () => {
-        const sys = await loadSettings(env.DB);
         return handleServersAPI(request, env, sys);
       }},
       { method: 'GET', path: '/api/config', handler: handleGetConfig },
@@ -126,19 +271,36 @@ export default {
         const id = url.searchParams.get('id');
         const metric = url.searchParams.get('metric') || 'cpu';
         const hours = parseFloat(url.searchParams.get('hours') || '24');
-        return fetchHistoryData(env, request, id, hours, metric);
+        return fetchHistoryData(env, request, id, hours, metric, sys);
       }},
       { method: 'GET', path: '/api/history/all', handler: async () => {
         const id = url.searchParams.get('id');
         const hours = parseFloat(url.searchParams.get('hours') || '24');
         const allColumns = 'cpu, ram, disk, processes, net_in_speed, net_out_speed, tcp_conn, udp_conn, ping_ct, ping_cu, ping_cm, ping_bd, swap_total, swap_used, load_avg';
-        return fetchHistoryData(env, request, id, hours, allColumns);
+        return fetchHistoryData(env, request, id, hours, allColumns, sys);
       }}
     ];
 
     for (const route of routes) {
       if (route.method === method && route.path === path) {
-        return route.handler();
+        const response = await route.handler();
+        
+        if (setTurnstileCookie && response) {
+          const expires = Math.floor(Date.now() / 1000) + 3600;
+          const cookieData = { expires, verified: true, timestamp: Date.now() };
+          const encryptedCookie = await encryptCookieData(cookieData, env);
+          
+          const newHeaders = new Headers(response.headers);
+          newHeaders.set('Set-Cookie', `turnstile_verified=${encryptedCookie}; path=/; max-age=3600; SameSite=Lax; HttpOnly`);
+          
+          const newResponse = new Response(response.body, {
+            status: response.status,
+            headers: newHeaders
+          });
+          return newResponse;
+        }
+        
+        return response;
       }
     }
 

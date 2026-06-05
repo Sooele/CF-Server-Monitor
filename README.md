@@ -1,6 +1,8 @@
 # CF-Server-Monitor
 
-**版本：V2.3**
+**版本：V2.4**
+
+**演示地址**：[https://tz.dashdeep.dpdns.org/](https://tz.dashdeep.dpdns.org/)
 
 一个基于 Cloudflare Workers + D1 的多服务器监控探针系统，支持实时监控、历史数据查看、延迟追踪、地图展示等功能。
 
@@ -17,12 +19,15 @@
 - ↕️ **拖拽排序**：后台拖拽调整服务器显示顺序
 - 🌐 **双语支持**：支持中文和英文界面自由切换
 - 🧪 **本地测试**：支持本地模拟数据生成，方便开发和测试
+- 🔐 **Turnstile 验证**：集成 Cloudflare Turnstile 人机验证，增强 API 安全性
+- 🔑 **JWT 认证**：登录系统采用 JWT token 认证，支持自定义密钥
 
 ## 📁 项目结构
 
 ```
 CF-Server-Monitor/
 ├── public/
+│   ├── cf-server-monitor.pyw   # Windows 探针脚本（.pyw 不显示 CMD 窗口）
 │   ├── install.sh              # 一键安装脚本（含卸载）
 │   └── logo.svg                # Logo
 ├── src/
@@ -40,16 +45,17 @@ CF-Server-Monitor/
 │   ├── services/
 │   │   └── notification.js     # 通知服务
 │   ├── utils/
+│   │   ├── cache.js            # 缓存工具
 │   │   └── settings.js         # 设置管理
 │   └── frontend/               # Vue 3 前端应用
 │       ├── components/         # Vue 组件
+│       │   ├── Footer.vue
 │       │   ├── ServerCard.vue
-│       │   ├── TerminalHeader.vue
-│       │   └── Footer.vue
+│       │   └── TerminalHeader.vue
 │       ├── views/              # 页面视图
+│       │   ├── Admin.vue
 │       │   ├── Dashboard.vue
-│       │   ├── ServerDetail.vue
-│       │   └── Admin.vue
+│       │   └── ServerDetail.vue
 │       ├── router/
 │       │   └── index.js        # Vue Router 配置
 │       ├── utils/
@@ -66,9 +72,10 @@ CF-Server-Monitor/
 │   ├── README.md               # 测试工具说明
 │   └── generate-sql.js         # 测试数据生成工具
 ├── index.html
+├── jsconfig.json               # JS 配置
 ├── package.json
 ├── vite.config.js              # Vite 配置
-├── wrangler.toml
+├── wrangler.toml               # 本地测试 wrangler 配置
 └── .github/
     └── workflows/
         └── deploy.yml          # GitHub Actions 自动部署
@@ -131,6 +138,22 @@ CF-Server-Monitor/
 | `API_USER_NAME`  | 自定义用户名（如 `admin`）         | 管理后台用户名           |
 | `API_SECRET`     | 自定义密码（如 `MyMonitor2024!`） | 探针认证密钥 & 管理后台密码   |
 | `D1_DATABASE_ID` | 第二步获取的 Database ID        | D1 数据库 ID         |
+
+### Turnstile 配置（可选）
+
+如需启用 Turnstile 人机验证，需在管理后台配置：
+
+1. 登录 [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
+2. 创建站点，获取 **Site Key** 和 **Secret Key**
+3. 在管理后台 → 全局设置中启用 Turnstile 并填入密钥
+
+### JWT 配置（可选）
+
+如需自定义 JWT 密钥：
+
+1. 生成一个至少 32 位的随机字符串作为 JWT Secret
+2. 在管理后台 → 全局设置中填入 JWT Secret
+3. 保存后系统将使用自定义密钥进行 token 签名
 
 ### 第五步：部署
 
@@ -220,10 +243,10 @@ curl -sL https://你的项目.你的子域.workers.dev/install.sh | bash -s unin
 `pip install psutil pystray pillow`
 
 #### 下载探针脚本
-[cf-server-monitor.py](public/cf-server-monitor.py)
+[cf-server-monitor.pyw](public/cf-server-monitor.pyw)
 
-#### 运行探针（建议使用管理员权限）
-`python cf-server-monitor.py`
+#### 运行探针
+双击`cf-server-monitor.pyw`文件即可启动探针。
 
 > **注意**：详细配置说明请参考 [GitHub Issue #9](https://github.com/huilang-me/CF-Server-Monitor/issues/9#issuecomment-4620016171)
 

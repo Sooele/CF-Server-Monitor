@@ -1,5 +1,8 @@
 # 测试目录
 test/mock-data.sql
+public/cf_probe.log
+public/cf_probe_config.json
+public/__pycache__/
 
 # 依赖
 node_modules/

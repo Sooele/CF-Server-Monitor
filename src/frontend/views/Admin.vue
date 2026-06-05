@@ -14,10 +14,18 @@
           </div>
           <div class="login-form-group last">
             <label class="login-label">{{ trans.password }}</label>
-            <input type="password" v-model="loginForm.password" required class="login-input" placeholder="••••••••">
+            <div class="password-input-wrapper">
+              <input :type="passwordVisible.login ? 'text' : 'password'" v-model="loginForm.password" required class="login-input" placeholder="••••••••">
+              <button type="button" class="password-toggle" @click="togglePassword('login')">
+                {{ passwordVisible.login ? '🙈' : '👁️' }}
+              </button>
+            </div>
+          </div>
+          <div v-if="turnstileEnabled && turnstileSiteKey" class="login-form-group">
+            <div id="admin-turnstile-container"></div>
           </div>
           <div v-if="loginError" id="login-error" class="login-error">{{ loginError }}</div>
-          <button type="submit" class="login-btn">{{ trans.login }}</button>
+          <button type="submit" class="login-btn">{{ loginLoading ? '⏳' : trans.login }}</button>
         </form>
       </div>
     </div>
@@ -242,14 +250,73 @@
 
                 <div class="form-group">
                   <label class="form-label">{{ trans.telegramToken }}</label>
-                  <input type="password" v-model="settings.tg_bot_token" class="form-input" placeholder="Bot Token or Webhook URL">
+                  <div class="password-input-wrapper">
+                    <input :type="passwordVisible.tgBotToken ? 'text' : 'password'" v-model="settings.tg_bot_token" class="form-input" placeholder="Bot Token or Webhook URL">
+                    <button type="button" class="password-toggle" @click="togglePassword('tgBotToken')">
+                      {{ passwordVisible.tgBotToken ? '🙈' : '👁️' }}
+                    </button>
+                  </div>
                 </div>
 
                 <div class="form-group">
                   <label class="form-label">{{ trans.chatId }}</label>
-                  <input type="password" v-model="settings.tg_chat_id" class="form-input" placeholder="Telegram Chat ID (optional for WeChat)">
+                  <div class="password-input-wrapper">
+                    <input :type="passwordVisible.tgChatId ? 'text' : 'password'" v-model="settings.tg_chat_id" class="form-input" placeholder="Telegram Chat ID (optional for WeChat)">
+                    <button type="button" class="password-toggle" @click="togglePassword('tgChatId')">
+                      {{ passwordVisible.tgChatId ? '🙈' : '👁️' }}
+                    </button>
+                  </div>
                 </div>
               </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="section-title"><span>▸</span> Cloudflare Turnstile</div>
+
+              <div class="checkbox-item">
+                <input type="checkbox" id="cfg_turnstile_enabled" v-model="settings.turnstile_enabled">
+                <label><b>Enable Turnstile</b></label>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Site Key</label>
+                <input type="text" v-model="settings.turnstile_site_key" class="form-input" placeholder="Turnstile Site Key">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Secret Key</label>
+                <div class="password-input-wrapper">
+                  <input :type="passwordVisible.turnstileSecret ? 'text' : 'password'" v-model="settings.turnstile_secret_key" class="form-input" placeholder="Turnstile Secret Key">
+                  <button type="button" class="password-toggle" @click="togglePassword('turnstileSecret')">
+                    {{ passwordVisible.turnstileSecret ? '🙈' : '👁️' }}
+                  </button>
+                </div>
+              </div>
+
+              <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+                <span style="color: var(--accent-yellow);">[i]</span> 
+                Cloudflare Turnstile provides bot protection. Get keys from 
+                <a href="https://dash.cloudflare.com/?to=/:account/turnstile" target="_blank" style="color: var(--accent-blue);">Cloudflare Dashboard</a>.
+              </p>
+            </div>
+
+            <div class="settings-section">
+              <div class="section-title"><span>▸</span> JWT Settings</div>
+
+              <div class="form-group">
+                <label class="form-label">JWT Secret</label>
+                <div class="password-input-wrapper">
+                  <input :type="passwordVisible.jwtSecret ? 'text' : 'password'" v-model="settings.jwt_secret" class="form-input" placeholder="至少32个字符">
+                  <button type="button" class="password-toggle" @click="togglePassword('jwtSecret')">
+                    {{ passwordVisible.jwtSecret ? '🙈' : '👁️' }}
+                  </button>
+                </div>
+              </div>
+
+              <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+                <span style="color: var(--accent-yellow);">[i]</span> 
+                {{ trans.jwtSecretTip }}
+              </p>
             </div>
           </div>
 
@@ -279,7 +346,7 @@
         </div>
       </div>
 
-      <div id="editModal" class="modal-overlay" :style="{ display: showEditModal ? 'block' : 'none' }">
+      <div id="editModal" class="modal-overlay" :class="{ active: showEditModal }">
         <div class="modal-dialog">
           <div class="modal-header">
             <div class="modal-title">$ vim /etc/server.conf</div>
@@ -334,7 +401,7 @@
         </div>
       </div>
 
-      <div id="deleteModal" class="modal-overlay" :style="{ display: showDeleteModal ? 'block' : 'none' }">
+      <div id="deleteModal" class="modal-overlay" :class="{ active: showDeleteModal }">
         <div class="modal-dialog">
           <div class="modal-header">
             <div class="modal-title">$ rm -rf /etc/server.conf</div>
@@ -371,7 +438,7 @@
         </div>
       </div>
 
-      <div id="copyModal" class="modal-overlay" :style="{ display: showCopyModal ? 'block' : 'none' }">
+      <div id="copyModal" class="modal-overlay" :class="{ active: showCopyModal }">
         <div class="modal-dialog">
           <div class="modal-header">
             <div class="modal-title">$ curl -sL {{ API_BASE }}/install.sh | bash -s install</div>
@@ -413,7 +480,7 @@
         </div>
       </div>
 
-      <div id="dbModal" class="modal-overlay" :style="{ display: showDbModal ? 'block' : 'none' }">
+      <div id="dbModal" class="modal-overlay" :class="{ active: showDbModal }">
         <div class="modal-dialog">
           <div class="modal-header">
             <div class="modal-title">$ {{ dbOperation === 'rebuild' ? 'DROP DATABASE' : 'ALTER DATABASE' }}</div>
@@ -493,6 +560,10 @@ const getMessage = (msg) => {
 const isLoggedIn = ref(false)
 const loginForm = ref({ username: '', password: '' })
 const loginError = ref('')
+const loginLoading = ref(false)
+const turnstileEnabled = ref(false)
+const turnstileSiteKey = ref('')
+const turnstileToken = ref('')
 const activeTab = ref('servers')
 const servers = ref([])
 const selectedServers = ref([])
@@ -514,9 +585,25 @@ const settings = ref({
   show_tf: true,
   tg_notify: 'false',
   tg_bot_token: '',
-  tg_chat_id: ''
+  tg_chat_id: '',
+  turnstile_enabled: false,
+  turnstile_site_key: '',
+  turnstile_secret_key: '',
+  jwt_secret: ''
 })
 const apiSecret = ref('')
+
+const passwordVisible = ref({
+  login: false,
+  tgBotToken: false,
+  tgChatId: false,
+  turnstileSecret: false,
+  jwtSecret: false
+})
+
+const togglePassword = (field) => {
+  passwordVisible.value[field] = !passwordVisible.value[field]
+}
 
 const showEditModal = ref(false)
 const editForm = ref({
@@ -550,43 +637,108 @@ const copiedCmd = ref(false)
 
 const handleLogin = async () => {
     loginError.value = ''
-    const res = await login(loginForm.value.username, loginForm.value.password)
+    loginLoading.value = true
+    
+    if (turnstileEnabled.value && !turnstileToken.value) {
+      loginError.value = 'Please complete the verification'
+      loginLoading.value = false
+      return
+    }
+    
+    const res = await login(loginForm.value.username, loginForm.value.password, turnstileToken.value)
     if (res.ok) {
       isLoggedIn.value = true
+      if (turnstileToken.value) {
+        localStorage.setItem('turnstile_token', turnstileToken.value)
+      }
       loadSettings()
       loadServers()
       refreshStats()
     } else {
       loginError.value = trans.value.errorInvalidUsername
       loginForm.value.password = ''
+      turnstileToken.value = ''
+      localStorage.removeItem('turnstile_token')
+      if (window.turnstile) {
+        window.turnstile.reset('#admin-turnstile-container')
+      }
     }
+    loginLoading.value = false
   }
 
 const logout = () => {
   apiLogout()
   isLoggedIn.value = false
+  localStorage.removeItem('turnstile_token')
 }
 
 const checkLoginStatus = () => {
-  const saved = localStorage.getItem('admin_credentials')
-  if (saved) {
-    try {
-      const creds = JSON.parse(saved)
-      return creds.username && creds.password
-    } catch (e) {
-      localStorage.removeItem('admin_credentials')
-    }
-  }
-  return false
+  const token = localStorage.getItem('jwt_token')
+  return !!token
 }
 
-const initAdmin = () => {
+const initAdmin = async () => {
   const hasCreds = checkLoginStatus()
   if (hasCreds) {
     isLoggedIn.value = true
+    const savedTurnstileToken = localStorage.getItem('turnstile_token')
+    if (savedTurnstileToken) {
+      turnstileToken.value = savedTurnstileToken
+    }
     loadSettings()
     loadServers()
     refreshStats()
+  } else {
+    await loadTurnstileConfig()
+  }
+}
+
+const loadTurnstileConfig = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/api/config`)
+    if (res.ok) {
+      const config = await res.json()
+      turnstileEnabled.value = config.turnstile_enabled === true || config.turnstile_enabled === 'true'
+      turnstileSiteKey.value = config.turnstile_site_key || ''
+      
+      if (turnstileEnabled.value && turnstileSiteKey.value) {
+        await loadTurnstileScript()
+        renderTurnstile()
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load Turnstile config:', e)
+  }
+}
+
+const loadTurnstileScript = () => {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+    script.async = true
+    script.onload = resolve
+    script.onerror = reject
+    document.head.appendChild(script)
+  })
+}
+
+const renderTurnstile = () => {
+  if (window.turnstile) {
+    window.turnstile.render('#admin-turnstile-container', {
+      sitekey: turnstileSiteKey.value,
+      callback: (token) => {
+        turnstileToken.value = token
+        localStorage.setItem('turnstile_token', token)
+      },
+      errorCallback: () => {
+        turnstileToken.value = ''
+        localStorage.removeItem('turnstile_token')
+      },
+      expiredCallback: () => {
+        turnstileToken.value = ''
+        localStorage.removeItem('turnstile_token')
+      }
+    })
   }
 }
 
@@ -609,7 +761,11 @@ const loadSettings = async () => {
         show_tf: settingsData.show_tf === 'true',
         tg_notify: settingsData.tg_notify || 'false',
         tg_bot_token: settingsData.tg_bot_token || '',
-        tg_chat_id: settingsData.tg_chat_id || ''
+        tg_chat_id: settingsData.tg_chat_id || '',
+        turnstile_enabled: settingsData.turnstile_enabled === 'true',
+        turnstile_site_key: settingsData.turnstile_site_key || '',
+        turnstile_secret_key: settingsData.turnstile_secret_key || '',
+        jwt_secret: settingsData.jwt_secret || ''
       }
       apiSecret.value = data.api_secret || ''
     }
@@ -620,6 +776,18 @@ const loadSettings = async () => {
 
 const saveSettings = async () => {
     if (saving.value) return
+
+    const jwtSecret = settings.value.jwt_secret
+    if (jwtSecret && jwtSecret.length > 0 && jwtSecret.length < 32) {
+      alert(trans.jwtSecretMinLength)
+      return
+    }
+
+    if (jwtSecret && /\s/.test(jwtSecret)) {
+      alert(trans.jwtSecretNoWhitespace)
+      return
+    }
+
     saving.value = true
 
     const data = {
@@ -637,7 +805,11 @@ const saveSettings = async () => {
         show_tf: settings.value.show_tf ? 'true' : 'false',
         tg_notify: settings.value.tg_notify,
         tg_bot_token: settings.value.tg_bot_token,
-        tg_chat_id: settings.value.tg_chat_id
+        tg_chat_id: settings.value.tg_chat_id,
+        turnstile_enabled: settings.value.turnstile_enabled ? 'true' : 'false',
+        turnstile_site_key: settings.value.turnstile_site_key,
+        turnstile_secret_key: settings.value.turnstile_secret_key,
+        jwt_secret: settings.value.jwt_secret
       }
     }
 

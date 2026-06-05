@@ -7,7 +7,7 @@ export async function handleUpdate(request, env, ctx) {
     const { id, secret, metrics } = data;
 
     if (secret !== env.API_SECRET) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response(JSON.stringify({ error: 'Unauthorized', code: 401 }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
 
     let countryCode = request.cf?.country || '';

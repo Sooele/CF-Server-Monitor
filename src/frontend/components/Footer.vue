@@ -1,6 +1,6 @@
 <template>
   <footer class="footer">
-    V2.3 | {{ t('poweredBy') }} <a href="https://github.com/huilang-me/CF-Server-Monitor" target="_blank">CF-Server-Monitor</a>
+    V2.4 | {{ t('poweredBy') }} <a href="https://github.com/huilang-me/CF-Server-Monitor" target="_blank">CF-Server-Monitor</a>
   </footer>
 </template>
 

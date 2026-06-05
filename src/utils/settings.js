@@ -1,5 +1,5 @@
 const APPEARANCE_FIELDS = ['site_title', 'admin_title', 'custom_bg', 'custom_head', 'custom_script'];
-const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_bw', 'show_tf', 'tg_notify', 'tg_bot_token', 'tg_chat_id'];
+const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_bw', 'show_tf', 'tg_notify', 'tg_bot_token', 'tg_chat_id', 'turnstile_enabled', 'turnstile_site_key', 'turnstile_secret_key', 'jwt_secret'];
 
 const defaults = {
   site_title: 'Cloudflare Server Monitor',
@@ -14,7 +14,10 @@ const defaults = {
   show_tf: 'true',
   tg_notify: 'false',
   tg_bot_token: '',
-  tg_chat_id: ''
+  tg_chat_id: '',
+  turnstile_enabled: 'false',
+  turnstile_site_key: '',
+  turnstile_secret_key: ''
 };
 
 function tryParseJSON(str) {
