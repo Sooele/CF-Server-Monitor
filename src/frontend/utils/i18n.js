@@ -174,7 +174,24 @@ const translations = reactive({
     close: 'Close',
     jwtSecretTip: 'JWT secret is used to generate and verify login tokens. Use a random string of at least 32 characters.',
     jwtSecretMinLength: 'JWT Secret must be at least 32 characters long',
-    jwtSecretNoWhitespace: 'JWT Secret should not contain whitespace'
+    jwtSecretNoWhitespace: 'JWT Secret should not contain whitespace',
+    adminLoginSettings: 'Admin Login Settings',
+    adminLoginTip: 'If empty, system environment variables (API_USER_NAME/API_SECRET) will be used.',
+    usernamePlaceholder: 'admin',
+    confirmPassword: 'Confirm Password',
+    apiSecretTip: 'The API_SECRET for server reporting still uses the environment variable, regardless of password settings here.',
+    passwordMismatch: 'Passwords do not match',
+    usernameRequired: 'Username is required',
+    turnstileSettings: 'Cloudflare Turnstile',
+    enableTurnstile: 'Enable Turnstile',
+    turnstileSiteKey: 'Site Key',
+    turnstileSiteKeyPlaceholder: 'Turnstile Site Key',
+    turnstileSecretKey: 'Secret Key',
+    turnstileSecretKeyPlaceholder: 'Turnstile Secret Key',
+    turnstileTip: 'Cloudflare Turnstile provides bot protection. Get keys from Cloudflare Dashboard.',
+    jwtSettings: 'JWT Settings',
+    jwtSecret: 'JWT Secret',
+    jwtSecretPlaceholder: 'At least 32 characters'
   },
   zh: {
     theme: '主题',
@@ -349,7 +366,24 @@ const translations = reactive({
     close: '关闭',
     jwtSecretTip: 'JWT密钥用于生成和验证登录token。使用至少32个字符的随机字符串。',
     jwtSecretMinLength: 'JWT Secret至少需要32个字符',
-    jwtSecretNoWhitespace: 'JWT Secret不应包含空格'
+    jwtSecretNoWhitespace: 'JWT Secret不应包含空格',
+    adminLoginSettings: '管理员登录设置',
+    adminLoginTip: '如果留空，将使用系统环境变量 (API_USER_NAME/API_SECRET)。',
+    usernamePlaceholder: 'admin',
+    confirmPassword: '确认密码',
+    apiSecretTip: '服务器上报使用的 API_SECRET 仍使用环境变量，不受此处密码设置影响。',
+    passwordMismatch: '两次输入的密码不一致',
+    usernameRequired: '用户名不能为空',
+    turnstileSettings: 'Cloudflare Turnstile',
+    enableTurnstile: '启用 Turnstile',
+    turnstileSiteKey: '站点密钥',
+    turnstileSiteKeyPlaceholder: 'Turnstile 站点密钥',
+    turnstileSecretKey: '密钥',
+    turnstileSecretKeyPlaceholder: 'Turnstile 密钥',
+    turnstileTip: 'Cloudflare Turnstile 提供机器人保护。从 Cloudflare 控制台获取密钥。',
+    jwtSettings: 'JWT 设置',
+    jwtSecret: 'JWT 密钥',
+    jwtSecretPlaceholder: '至少32个字符'
   }
 })
 

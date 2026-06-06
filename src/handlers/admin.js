@@ -3,6 +3,15 @@ import { clearNotificationSettingsCache } from '../services/notification.js';
 import { getLatestMetricsForAllServers, getAllServers } from '../database/schema.js';
 import { clearServersListCache, clearServerDetailCache } from '../utils/cache.js';
 
+async function md5Hash(input) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hash = await crypto.subtle.digest('MD5', data);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 async function verifyTurnstileToken(token, secretKey) {
   if (!token || !secretKey) {
     return false;
@@ -72,7 +81,7 @@ export async function handleAdminAPI(request, env, sys) {
         }
       };
 
-      const isValid = await validateCredentials(mockRequest, env);
+      const isValid = await validateCredentials(mockRequest, env, sys);
       
       if (!isValid) {
         return new Response(JSON.stringify({ error: 'Invalid username or password' }), { 
@@ -159,7 +168,7 @@ export async function handleAdminAPI(request, env, sys) {
       const settings = data.settings || {};
 
       const APPEARANCE_FIELDS = ['site_title', 'admin_title', 'custom_bg', 'custom_head', 'custom_script'];
-      const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_bw', 'show_tf', 'tg_notify', 'tg_bot_token', 'tg_chat_id', 'turnstile_enabled', 'turnstile_site_key', 'turnstile_secret_key', 'jwt_secret'];
+      const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_bw', 'show_tf', 'tg_notify', 'tg_bot_token', 'tg_chat_id', 'turnstile_enabled', 'turnstile_site_key', 'turnstile_secret_key', 'jwt_secret', 'username', 'password'];
 
       const appearanceOptions = {};
       for (const field of APPEARANCE_FIELDS) {
@@ -171,10 +180,21 @@ export async function handleAdminAPI(request, env, sys) {
         'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
       ).bind('appearance_options', JSON.stringify(appearanceOptions)).run();
 
-      const siteOptions = {};
+      const existingSiteOptionsResult = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('site_options').first();
+      const existingSiteOptions = existingSiteOptionsResult && existingSiteOptionsResult.value && existingSiteOptionsResult.value.length > 0 
+        ? JSON.parse(existingSiteOptionsResult.value) 
+        : {};
+
+      const siteOptions = { ...existingSiteOptions };
       for (const field of SITE_FIELDS) {
         if (settings[field] !== undefined) {
-          siteOptions[field] = settings[field];
+          if (field === 'password') {
+            if (settings[field] && settings[field].length > 0) {
+              siteOptions[field] = await md5Hash(settings[field]);
+            }
+          } else {
+            siteOptions[field] = settings[field];
+          }
         }
       }
       await env.DB.prepare(

@@ -16,8 +16,7 @@ directory = "./dist"
 binding = "ASSETS"
 
 [vars]
-API_USER_NAME = "admin"
-API_SECRET = "123456"
+API_SECRET = ""
 
 [[d1_databases]]
 binding = "DB"

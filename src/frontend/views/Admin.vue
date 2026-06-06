@@ -271,22 +271,22 @@
             </div>
 
             <div class="settings-section">
-              <div class="section-title"><span>▸</span> Cloudflare Turnstile</div>
+              <div class="section-title"><span>▸</span> {{ trans.turnstileSettings }}</div>
 
               <div class="checkbox-item">
                 <input type="checkbox" id="cfg_turnstile_enabled" v-model="settings.turnstile_enabled">
-                <label><b>Enable Turnstile</b></label>
+                <label><b>{{ trans.enableTurnstile }}</b></label>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Site Key</label>
-                <input type="text" v-model="settings.turnstile_site_key" class="form-input" placeholder="Turnstile Site Key">
+                <label class="form-label">{{ trans.turnstileSiteKey }}</label>
+                <input type="text" v-model="settings.turnstile_site_key" class="form-input" :placeholder="trans.turnstileSiteKeyPlaceholder">
               </div>
 
               <div class="form-group">
-                <label class="form-label">Secret Key</label>
+                <label class="form-label">{{ trans.turnstileSecretKey }}</label>
                 <div class="password-input-wrapper">
-                  <input :type="passwordVisible.turnstileSecret ? 'text' : 'password'" v-model="settings.turnstile_secret_key" class="form-input" placeholder="Turnstile Secret Key">
+                  <input :type="passwordVisible.turnstileSecret ? 'text' : 'password'" v-model="settings.turnstile_secret_key" class="form-input" :placeholder="trans.turnstileSecretKeyPlaceholder">
                   <button type="button" class="password-toggle" @click="togglePassword('turnstileSecret')">
                     {{ passwordVisible.turnstileSecret ? '🙈' : '👁️' }}
                   </button>
@@ -295,18 +295,55 @@
 
               <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
                 <span style="color: var(--accent-yellow);">[i]</span> 
-                Cloudflare Turnstile provides bot protection. Get keys from 
-                <a href="https://dash.cloudflare.com/?to=/:account/turnstile" target="_blank" style="color: var(--accent-blue);">Cloudflare Dashboard</a>.
+                {{ trans.turnstileTip }}
               </p>
             </div>
 
             <div class="settings-section">
-              <div class="section-title"><span>▸</span> JWT Settings</div>
+              <div class="section-title"><span>▸</span> {{ trans.adminLoginSettings }}</div>
+              <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">
+                <span style="color: var(--accent-yellow);">[i]</span>
+                {{ trans.adminLoginTip }}
+              </p>
 
               <div class="form-group">
-                <label class="form-label">JWT Secret</label>
+                <label class="form-label">{{ trans.username }}</label>
+                <input type="text" v-model="settings.username" class="form-input" :placeholder="trans.usernamePlaceholder">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">{{ trans.password }}</label>
                 <div class="password-input-wrapper">
-                  <input :type="passwordVisible.jwtSecret ? 'text' : 'password'" v-model="settings.jwt_secret" class="form-input" placeholder="至少32个字符">
+                  <input :type="passwordVisible.password ? 'text' : 'password'" v-model="settings.password" class="form-input" placeholder="••••••••">
+                  <button type="button" class="password-toggle" @click="togglePassword('password')">
+                    {{ passwordVisible.password ? '🙈' : '👁️' }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">{{ trans.confirmPassword }}</label>
+                <div class="password-input-wrapper">
+                  <input :type="passwordVisible.confirmPassword ? 'text' : 'password'" v-model="settings.confirm_password" class="form-input" placeholder="••••••••">
+                  <button type="button" class="password-toggle" @click="togglePassword('confirmPassword')">
+                    {{ passwordVisible.confirmPassword ? '🙈' : '👁️' }}
+                  </button>
+                </div>
+              </div>
+
+              <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+                <span style="color: var(--accent-yellow);">[i]</span>
+                {{ trans.apiSecretTip }}
+              </p>
+            </div>
+
+            <div class="settings-section">
+              <div class="section-title"><span>▸</span> {{ trans.jwtSettings }}</div>
+
+              <div class="form-group">
+                <label class="form-label">{{ trans.jwtSecret }}</label>
+                <div class="password-input-wrapper">
+                  <input :type="passwordVisible.jwtSecret ? 'text' : 'password'" v-model="settings.jwt_secret" class="form-input" :placeholder="trans.jwtSecretPlaceholder">
                   <button type="button" class="password-toggle" @click="togglePassword('jwtSecret')">
                     {{ passwordVisible.jwtSecret ? '🙈' : '👁️' }}
                   </button>
@@ -598,7 +635,10 @@ const settings = ref({
   turnstile_enabled: false,
   turnstile_site_key: '',
   turnstile_secret_key: '',
-  jwt_secret: ''
+  jwt_secret: '',
+  username: '',
+  password: '',
+  confirm_password: ''
 })
 const apiSecret = ref('')
 
@@ -607,7 +647,10 @@ const passwordVisible = ref({
   tgBotToken: false,
   tgChatId: false,
   turnstileSecret: false,
-  jwtSecret: false
+  jwtSecret: false,
+  username: false,
+  password: false,
+  confirmPassword: false
 })
 
 const togglePassword = (field) => {
@@ -775,7 +818,9 @@ const loadSettings = async () => {
         turnstile_enabled: settingsData.turnstile_enabled === 'true',
         turnstile_site_key: settingsData.turnstile_site_key || '',
         turnstile_secret_key: settingsData.turnstile_secret_key || '',
-        jwt_secret: settingsData.jwt_secret || ''
+        jwt_secret: settingsData.jwt_secret || '',
+        username: settingsData.username || '',
+        password: ''  // 不显示加密后的密码
       }
       apiSecret.value = data.api_secret || ''
     }
@@ -796,6 +841,19 @@ const saveSettings = async () => {
     if (jwtSecret && /\s/.test(jwtSecret)) {
       alert(trans.jwtSecretNoWhitespace)
       return
+    }
+
+    if (!settings.value.username || settings.value.username.trim().length === 0) {
+      alert(trans.value.usernameRequired)
+      return
+    }
+
+    // 只有当用户输入了新密码时才验证密码确认
+    if (settings.value.password && settings.value.password.length > 0) {
+      if (settings.value.password !== settings.value.confirm_password) {
+        alert(trans.value.passwordMismatch)
+        return
+      }
     }
 
     saving.value = true
@@ -819,8 +877,14 @@ const saveSettings = async () => {
         turnstile_enabled: settings.value.turnstile_enabled ? 'true' : 'false',
         turnstile_site_key: settings.value.turnstile_site_key,
         turnstile_secret_key: settings.value.turnstile_secret_key,
-        jwt_secret: settings.value.jwt_secret
+        jwt_secret: settings.value.jwt_secret,
+        username: settings.value.username
       }
+    }
+
+    // 只有当用户输入了新密码时才保存密码
+    if (settings.value.password && settings.value.password.length > 0) {
+      data.settings.password = settings.value.password
     }
 
     try {

@@ -127,6 +127,13 @@ export default {
     const method = request.method;
     const path = url.pathname;
 
+    if (!env.API_SECRET || env.API_SECRET.length === 0) {
+      return new Response(JSON.stringify({ error: 'API_SECRET is required', code: 400 }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (env.ASSETS && method === 'GET') {
       try {
         const res = await env.ASSETS.fetch(new Request(`http://static${path}`, request));

@@ -36,11 +36,19 @@ async function loadFrontendFiles(env) {
   }
 }
 
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function escapeCssString(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
 function injectAppearanceSettings(html, settings) {
   let modifiedHtml = html;
 
   // 1. 更新页面标题
-  const siteTitle = settings.site_title || 'Server Monitor';
+  const siteTitle = escapeHtml(settings.site_title || 'Server Monitor');
   modifiedHtml = modifiedHtml.replace(/<title>.*<\/title>/, `<title>${siteTitle}</title>`);
 
   // 2. 注入 custom_head (在 </head> 标签前)
@@ -55,7 +63,8 @@ function injectAppearanceSettings(html, settings) {
 
   // 4. 注入 custom_bg (添加背景样式到 body)
   if (settings.custom_bg) {
-    const bgStyle = `\n<style>\n  body { background-image: url('${settings.custom_bg}'); background-size: cover; background-attachment: fixed; background-position: center; }\n</style>\n`;
+    const safeBg = escapeCssString(settings.custom_bg);
+    const bgStyle = `\n<style>\n  body { background-image: url('${safeBg}'); background-size: cover; background-attachment: fixed; background-position: center; }\n</style>\n`;
     modifiedHtml = modifiedHtml.replace('</head>', `${bgStyle}\n</head>`);
   }
 
@@ -82,7 +91,8 @@ export async function serveFrontend(request, env) {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'CDN-Cache-Control': 'no-store'
+        'CDN-Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
       }
     });
   }

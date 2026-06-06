@@ -1,5 +1,14 @@
 const ALGORITHM = { name: 'HMAC', hash: 'SHA-256' };
 
+async function md5Hash(input) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hash = await crypto.subtle.digest('MD5', data);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 async function generateKeyFromSecret(secret) {
   const encoder = new TextEncoder();
   const keyData = encoder.encode(secret);
@@ -106,7 +115,7 @@ export async function checkAuth(request, env, sys) {
   }
 }
 
-export async function validateCredentials(request, env) {
+export async function validateCredentials(request, env, sys) {
   try {
     const authHeader = request.headers.get('Authorization');
     if (!authHeader) {
@@ -136,12 +145,21 @@ export async function validateCredentials(request, env) {
     const username = decoded.slice(0, idx);
     const password = decoded.slice(idx + 1);
 
+    const validUsername = (sys && sys.username && sys.username.length > 0)
+      ? sys.username
+      : (typeof env.API_USER_NAME === 'string' && env.API_USER_NAME.length > 0)
+        ? env.API_USER_NAME
+        : 'admin';
+
+    if (sys && sys.password && sys.password.length > 0) {
+      const hashedPassword = await md5Hash(password);
+      return username === validUsername && hashedPassword === sys.password;
+    }
+
     return (
-      typeof env.API_USER_NAME === 'string' && 
-      env.API_USER_NAME.length > 0 && 
-      typeof env.API_SECRET === 'string' && 
-      env.API_SECRET.length > 0 && 
-      username === env.API_USER_NAME && 
+      typeof env.API_SECRET === 'string' &&
+      env.API_SECRET.length > 0 &&
+      username === validUsername &&
       password === env.API_SECRET
     );
   } catch (e) {
