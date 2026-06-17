@@ -436,7 +436,7 @@ const createMap = () => {
 
   window.L.control.zoom({ position: 'bottomright' }).addTo(window.myMap)
 
-  fetch('https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json')
+  fetch('https://cdn.jsdelivr.net/npm/@surbowl/world-geo-json-zh@2.1.5/world.zh.json')
     .then(res => res.json())
     .then(worldGeoJson => {
       window.worldGeoJson = worldGeoJson
@@ -455,14 +455,6 @@ const countryCoords = {
   'DK': [56.26, 9.50], 'IE': [53.14, -7.69], 'AT': [47.51, 14.55], 'TR': [38.96, 35.24],
   'AE': [23.42, 53.84], 'MY': [4.21, 101.97], 'TH': [15.87, 100.99], 'VN': [14.05, 108.27],
   'PH': [12.87, 121.77], 'ID': [-0.78, 113.92]
-}
-
-const iso2To3 = {
-  "US":"USA","CN":"CHN","JP":"JPN","HK":"HKG","SG":"SGP","KR":"KOR","DE":"DEU","GB":"GBR",
-  "NL":"NLD","FR":"FRA","CA":"CAN","AU":"AUS","IN":"IND","BR":"BRA","RU":"RUS","ZA":"ZAF",
-  "TW":"TWN","IT":"ITA","SE":"SWE","CH":"CHE","ES":"ESP","PL":"POL","FI":"FIN","NO":"NOR",
-  "DK":"DNK","IE":"IRL","AT":"AUT","TR":"TUR","AE":"ARE","MY":"MYS","TH":"THA","VN":"VNM",
-  "PH":"PHL","ID":"IDN"
 }
 
 let markersLayer, geoJsonLayer, currentMapDataStr = ""
@@ -491,14 +483,14 @@ const drawMarkers = () => {
   else markersLayer = window.L.layerGroup().addTo(window.myMap)
 
   const colors = getThemeColors()
-  const activeIso3 = {}
+  const activeIso2 = {}
   for (const code in countryStats.value) {
-    if (iso2To3[code.toUpperCase()]) activeIso3[iso2To3[code.toUpperCase()]] = true
+    activeIso2[code.toUpperCase()] = true
   }
 
   geoJsonLayer = window.L.geoJSON(window.worldGeoJson, {
     style: function(feature) {
-      const isActive = activeIso3[feature.id]
+      const isActive = activeIso2[feature.properties.iso_a2]
       return {
         fillColor: isActive ? colors.accentGreen : colors.borderColor,
         weight: 1,
