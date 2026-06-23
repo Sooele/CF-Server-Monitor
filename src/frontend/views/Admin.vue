@@ -834,12 +834,10 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import TerminalHeader from '../components/TerminalHeader.vue'
 import Footer from '../components/Footer.vue'
-import { adminApi, login, logout as apiLogout, formatBytes, upgradeDatabase, rebuildDatabase, getFlagCountryCode } from '../utils/api'
+import { adminApi, login, logout as apiLogout, formatBytes, upgradeDatabase, rebuildDatabase, getFlagCountryCode, getApiBase } from '../utils/api'
 import { t, currentLang } from '../utils/i18n'
 import { translations } from '../utils/i18n'
 import { http } from '../utils/http'
-
-const API_BASE = window.location.origin
 
 const trans = computed(() => translations[currentLang.value] || translations.en)
 
@@ -1229,12 +1227,12 @@ const addServer = async () => {
   }
 
 const getInstallCommand = (serverId) => {
-  const HOST = API_BASE
+  const HOST = getApiBase()
   return `curl -sL ${HOST}/install.sh | bash -s install -id=${serverId} -secret='${apiSecret.value}' -url=${HOST}/update`
 }
 
 const getUninstallCommand = () => {
-  return `curl -sL ${API_BASE}/install.sh | bash -s uninstall`
+  return `curl -sL ${getApiBase()}/install.sh | bash -s uninstall`
 }
 
 const copyCmd = (serverId) => {
@@ -1256,7 +1254,7 @@ const copyCmd = (serverId) => {
 }
 
 const getCustomInstallCommand = () => {
-  const HOST = API_BASE
+  const HOST = getApiBase()
   if (targetOs.value === 'windows') {
     return `${HOST}/cf-server-monitor.pyw`
   }

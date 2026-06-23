@@ -1,4 +1,4 @@
-const API_BASE = window.location.origin
+import { getApiBase } from './config'
 
 const DEFAULT_ERROR_MESSAGES = {
   401: 'Unauthorized',
@@ -24,6 +24,10 @@ const createHeaders = (includeAuth = true, includeTurnstile = true) => {
     if (turnstileToken) {
       headers['X-Turnstile-Token'] = turnstileToken
     }
+    const turnstileVerified = localStorage.getItem('turnstile_verified')
+    if (turnstileVerified) {
+      headers['X-Turnstile-Verified'] = turnstileVerified
+    }
   }
   
   return headers
@@ -42,6 +46,7 @@ const handleResponse = async (res, options = {}) => {
   
   if (res.status === 403) {
     localStorage.removeItem('turnstile_token')
+    localStorage.removeItem('turnstile_verified')
     if (autoRedirect) {
       window.location.reload()
     }
@@ -70,6 +75,12 @@ const handleResponse = async (res, options = {}) => {
   
   try {
     const data = await res.json()
+    // Store turnstile_verified from body if present
+    if (data && data.turnstile_verified) {
+      localStorage.setItem('turnstile_verified', data.turnstile_verified)
+      // Clear one-time turnstile token after successful verification
+      localStorage.removeItem('turnstile_token')
+    }
     return { data, status: res.status }
   } catch (e) {
     return { data: null, status: res.status }
@@ -80,54 +91,54 @@ export const http = {
   async get(url, options = {}) {
     const { includeAuth = true, includeTurnstile = true, autoRedirect = true } = options
     const headers = createHeaders(includeAuth, includeTurnstile)
-    
-    const res = await fetch(`${API_BASE}${url}`, {
+
+    const res = await fetch(`${getApiBase()}${url}`, {
       method: 'GET',
       headers,
       credentials: 'include'
     })
-    
+
     return handleResponse(res, { autoRedirect })
   },
-  
+
   async post(url, body = {}, options = {}) {
     const { includeAuth = true, includeTurnstile = true, autoRedirect = true } = options
     const headers = createHeaders(includeAuth, includeTurnstile)
-    
-    const res = await fetch(`${API_BASE}${url}`, {
+
+    const res = await fetch(`${getApiBase()}${url}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       credentials: 'include'
     })
-    
+
     return handleResponse(res, { autoRedirect })
   },
-  
+
   async put(url, body = {}, options = {}) {
     const { includeAuth = true, includeTurnstile = true, autoRedirect = true } = options
     const headers = createHeaders(includeAuth, includeTurnstile)
-    
-    const res = await fetch(`${API_BASE}${url}`, {
+
+    const res = await fetch(`${getApiBase()}${url}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(body),
       credentials: 'include'
     })
-    
+
     return handleResponse(res, { autoRedirect })
   },
-  
+
   async delete(url, options = {}) {
     const { includeAuth = true, includeTurnstile = true, autoRedirect = true } = options
     const headers = createHeaders(includeAuth, includeTurnstile)
-    
-    const res = await fetch(`${API_BASE}${url}`, {
+
+    const res = await fetch(`${getApiBase()}${url}`, {
       method: 'DELETE',
       headers,
       credentials: 'include'
     })
-    
+
     return handleResponse(res, { autoRedirect })
   }
 }

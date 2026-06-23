@@ -1,8 +1,7 @@
 import { http, isAdminLoggedIn } from './http'
+import { getApiBase, getWsBase } from './config'
 
-const API_BASE = window.location.origin
-const WS_PROTO = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-const WS_BASE = `${WS_PROTO}//${window.location.host}`
+export { getApiBase, getWsBase }
 
 export const createLiveSocket = (subscribe, handlers = {}) => {
   const { onUpdate, onStatus, onMessage } = handlers
@@ -24,7 +23,7 @@ export const createLiveSocket = (subscribe, handlers = {}) => {
   const connect = () => {
     manualClose = false
     try {
-      ws = new WebSocket(`${WS_BASE}/api/ws?subscribe=${encodeURIComponent(scope)}`)
+      ws = new WebSocket(`${getWsBase()}/api/ws?subscribe=${encodeURIComponent(scope)}`)
     } catch (e) {
       setStatus(false, 'WebSocket not supported')
       return

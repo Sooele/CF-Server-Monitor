@@ -16,9 +16,26 @@ if (fs.existsSync(distDir)) {
 console.log('Building frontend...');
 execSync('npx vite build', { cwd: rootDir, stdio: 'inherit' });
 
+console.log('Generating config.json from .env...');
+const envConfig = {};
+if (fs.existsSync(path.join(rootDir, '.env'))) {
+  const envContent = fs.readFileSync(path.join(rootDir, '.env'), 'utf8');
+  const lines = envContent.split('\n');
+  for (const line of lines) {
+    const match = line.match(/^\s*API_BASE_URL\s*=\s*["']?(.+?)["']?\s*$/);
+    if (match) {
+      envConfig.apiBase = match[1];
+      break;
+    }
+  }
+}
+const configJsonPath = path.join(distDir, 'config.json');
+fs.writeFileSync(configJsonPath, JSON.stringify({ apiBase: envConfig.apiBase || '' }, null, 2), 'utf8');
+console.log(`Generated config.json with apiBase: ${envConfig.apiBase || '(empty)'}`);
+
 console.log('Copying static assets...');
 if (fs.existsSync(publicDir)) {
-  fs.copySync(publicDir, distDir);
+  fs.copySync(publicDir, distDir, { overwrite: false });
   console.log('Copied all static assets');
 }
 

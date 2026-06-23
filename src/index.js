@@ -66,15 +66,17 @@ async function decryptCookieData(encoded, env) {
   }
 }
 
-async function isTurnstileCookieValid(request, env) {
-  const cookies = request.headers.get('Cookie') || '';
-  const turnstileCookie = cookies.split(';').find(c => c.trim().startsWith('turnstile_verified='));
+async function isTurnstileVerified(request, env) {
+  const verifiedHeader = request.headers.get('X-Turnstile-Verified');
   
-  if (!turnstileCookie) return false;
+  if (!verifiedHeader) return false;
   
-  const encryptedData = turnstileCookie.split('=')[1];
-  const decrypted = await decryptCookieData(encryptedData, env);
-  return decrypted && decrypted.expires && Date.now() < decrypted.expires * 1000;
+  try {
+    const decrypted = await decryptCookieData(verifiedHeader, env);
+    return decrypted && decrypted.expires && Date.now() < decrypted.expires * 1000;
+  } catch {
+    return false;
+  }
 }
 
 async function fetchHistoryData(env, request, id, hours, columns, sys = null) {
@@ -158,6 +160,7 @@ export default {
 
     const bypassTurnstilePaths = [
       '/admin/api',
+      '/api/ws',
     ];
 
     const isApiRequest = path.startsWith('/api/') || path.startsWith('/admin/api');
@@ -165,13 +168,17 @@ export default {
       await initDatabase(env.DB);
     }
 
-    // /api/config 在不带 X-Turnstile-Token 时仍然 bypass（用于初始化判断是否需要验证），
-    // 带 token 时则走完整验证流程，以便复用 cookie_auth 字段返回验证结果
+    // /api/config 在不带 X-Turnstile-Token 且不带 X-Turnstile-Verified 时仍然 bypass（用于初始化判断是否需要验证），
+    // 带 token 或 verified header 时则走完整验证流程，以便复用 verified 字段返回验证结果
     const isTurnstileBypassed = (reqPath) => {
       if (bypassTurnstilePaths.includes(reqPath)) return true;
-      if (reqPath === '/api/config' && !request.headers.get('X-Turnstile-Token')) return true;
+      if (reqPath === '/api/config' && !request.headers.get('X-Turnstile-Token') && !request.headers.get('X-Turnstile-Verified')) return true;
       return false;
     };
+
+    if (path === '/api/ws') {
+      console.log('[DEBUG] /api/ws bypass check:', isTurnstileBypassed(path), 'path:', path);
+    }
 
     let setTurnstileCookie = false;
     let sys = null;
@@ -182,7 +189,7 @@ export default {
       const turnstileSecretKey = sys.turnstile_secret_key || '';
       
       if (turnstileEnabled) {
-        const hasValidCookie = await isTurnstileCookieValid(request, env);
+        const hasValidCookie = await isTurnstileVerified(request, env);
         
         if (!hasValidCookie) {
           const turnstileToken = request.headers.get('X-Turnstile-Token');
@@ -220,20 +227,24 @@ export default {
       { method: 'GET', path: '/api/config', handler: async () => {
         await ensureFullSettings();
         const turnstileEnabled = sys.turnstile_enabled === 'true';
-        let cookieAuth = false;
+        let verified = false;
+        let turnstileVerified = null;
 
         if (turnstileEnabled) {
-          cookieAuth = await isTurnstileCookieValid(request, env);
-          // 本次请求刚完成 token 校验，cookie 会在响应里下放，这里需要把 cookie_auth 标记为 true
+          verified = await isTurnstileVerified(request, env);
           if (setTurnstileCookie) {
-            cookieAuth = true;
+            verified = true;
+            const expires = Math.floor(Date.now() / 1000) + 3600;
+            const cookieData = { expires, verified: true, timestamp: Date.now() };
+            turnstileVerified = await encryptCookieData(cookieData, env);
           }
         }
 
         return createSuccessResponse({
           turnstile_enabled: turnstileEnabled,
           turnstile_site_key: sys.turnstile_site_key || '',
-          cookie_auth: cookieAuth,
+          verified: verified,
+          turnstile_verified: turnstileVerified,
           show_long_history: sys.show_long_history === 'true'
         });
       }},
@@ -276,28 +287,31 @@ export default {
       }}
     ];
 
+    console.log('[DEBUG] About to check routes, method:', method, 'path:', path);
     for (const route of routes) {
       if (route.method === method && route.path === path) {
+        console.log('[DEBUG] Route matched:', method, path);
         const response = await route.handler();
-        
-        const corsResponse = applyCors(response, request, corsAllowedOrigins);
-        
-        if (setTurnstileCookie && corsResponse) {
+        console.log('[DEBUG] Route response status:', response.status);
+
+        if (setTurnstileCookie) {
           const expires = Math.floor(Date.now() / 1000) + 3600;
           const cookieData = { expires, verified: true, timestamp: Date.now() };
-          const encryptedCookie = await encryptCookieData(cookieData, env);
-          
-          const newHeaders = new Headers(corsResponse.headers);
-          newHeaders.set('Set-Cookie', `turnstile_verified=${encryptedCookie}; path=/; max-age=3600; SameSite=None; Secure; HttpOnly`);
-          
-          const newResponse = new Response(corsResponse.body, {
-            status: corsResponse.status,
-            headers: newHeaders
+          const encryptedData = await encryptCookieData(cookieData, env);
+
+          const finalHeaders = new Headers(response.headers);
+          finalHeaders.set('Access-Control-Allow-Origin', request.headers.get('Origin') || '');
+          finalHeaders.set('Access-Control-Allow-Credentials', 'true');
+          finalHeaders.set('Vary', 'Origin');
+
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: finalHeaders
           });
-          return newResponse;
         }
-        
-        return corsResponse;
+
+        return applyCors(response, request, corsAllowedOrigins);
       }
     }
 

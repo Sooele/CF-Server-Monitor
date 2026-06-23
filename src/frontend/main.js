@@ -5,6 +5,7 @@ import './styles/main.css'
 import './styles/light.css'
 import { currentLang, translations } from './utils/i18n'
 import { http } from './utils/http'
+import { initConfig } from './utils/config'
 
 const getTranslation = () => {
   const lang = localStorage.getItem('language_preference') || 'en'
@@ -15,7 +16,7 @@ const trans = () => getTranslation()
 
 async function fetchConfig() {
   try {
-    const result = await http.get('/api/config', { includeAuth: false, includeTurnstile: false })
+    const result = await http.get('/api/config', { includeAuth: false, includeTurnstile: true })
     if (!result.error) {
       return result.data
     }
@@ -36,17 +37,6 @@ async function loadTurnstileScript() {
   })
 }
 
-function hasValidTurnstileCookie() {
-  const cookies = document.cookie.split(';')
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=')
-    if (name === 'turnstile_verified' && value) {
-      return true
-    }
-  }
-  return false
-}
-
 async function verifyTurnstile(siteKey) {
   return new Promise((resolve) => {
     turnstile.render('#turnstile-container', {
@@ -56,7 +46,7 @@ async function verifyTurnstile(siteKey) {
         try {
           const result = await http.get('/api/config', { includeAuth: false, includeTurnstile: true, autoRedirect: false })
           if (!result.error) {
-            resolve(result.data && result.data.cookie_auth === true)
+            resolve(result.data && result.data.verified === true)
           } else {
             resolve(false)
           }
@@ -78,9 +68,13 @@ async function verifyTurnstile(siteKey) {
 }
 
 async function initApp() {
+  // Load frontend runtime config (apiBase) first so all subsequent
+  // HTTP / WebSocket requests go through the configured origin.
+  await initConfig()
+
   const config = await fetchConfig()
   
-  if (config.turnstile_enabled && config.turnstile_site_key && !config.cookie_auth) {
+  if (config.turnstile_enabled && config.turnstile_site_key && !config.verified) {
     const loading = document.getElementById('loading')
     if (loading) {
       loading.innerHTML = `
