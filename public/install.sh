@@ -62,6 +62,7 @@ print_usage() {
     echo "  -reset_day=N   流量重置日(1-31, 0=不重置)，默认1"
     echo "  -rx_correction=N  下行流量校正(GB)，修改当月下行数据"
     echo "  -tx_correction=N  上行流量校正(GB)，修改当月上行数据"
+    echo "  -debug=1       输出上报调试日志，默认0"
     echo ""
     echo "示例:"
     echo "  bash $0 install -id=server123 -secret=abc123 -url=https://worker.example.com"
@@ -69,7 +70,15 @@ print_usage() {
     echo "  bash $0 install -id=server123 -secret=abc123 -url=https://worker.example.com -ct=ct.example.com -cu=cu.example.com"
     echo "  bash $0 install -id=server123 -secret=abc123 -url=https://worker.example.com -reset_day=15"
     echo "  bash $0 install -id=server123 -secret=abc123 -url=https://worker.example.com -rx_correction=10 -tx_correction=5"
+    echo "  bash $0 install -id=server123 -secret=abc123 -url=https://worker.example.com -debug=1"
     exit 1
+}
+
+normalize_debug_mode() {
+    case "${1:-0}" in
+        1|true|TRUE|yes|YES|on|ON) echo "1" ;;
+        *) echo "0" ;;
+    esac
 }
 
 detect_runtime_mode() {
@@ -197,12 +206,18 @@ while IFS='=' read -r key value; do
         CM_NODE) CM_NODE="${value%\"}"; CM_NODE="${CM_NODE#\"}" ;;
         BD_NODE) BD_NODE="${value%\"}"; BD_NODE="${BD_NODE#\"}" ;;
         RESET_DAY) RESET_DAY="${value%\"}"; RESET_DAY="${RESET_DAY#\"}" ;;
+        DEBUG_MODE) DEBUG_MODE="${value%\"}"; DEBUG_MODE="${DEBUG_MODE#\"}" ;;
     esac
 done < "${CONFIG_FILE}"
 
 COLLECT_INTERVAL=${COLLECT_INTERVAL:-0}
 REPORT_INTERVAL=${REPORT_INTERVAL:-60}
 PING_TYPE=${PING_TYPE:-http}
+DEBUG_MODE=${DEBUG_MODE:-0}
+case "$DEBUG_MODE" in
+    1|true|TRUE|yes|YES|on|ON) DEBUG_MODE=1 ;;
+    *) DEBUG_MODE=0 ;;
+esac
 [ -z "$RESET_DAY" ] && RESET_DAY=1
 case "$COLLECT_INTERVAL" in ''|*[!0-9]*) COLLECT_INTERVAL=0 ;; esac
 case "$REPORT_INTERVAL" in ''|*[!0-9]*) REPORT_INTERVAL=60 ;; esac
@@ -212,6 +227,22 @@ if [ "$COLLECT_INTERVAL" -gt 0 ] && [ "$REPORT_INTERVAL" -lt "$COLLECT_INTERVAL"
 fi
 ACTIVE_INTERVAL="$REPORT_INTERVAL"
 [ "$COLLECT_INTERVAL" -gt 0 ] && ACTIVE_INTERVAL="$COLLECT_INTERVAL"
+
+log_ts() {
+    date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S'
+}
+
+log_info() {
+    echo "[INFO] $(log_ts) $*"
+}
+
+log_debug() {
+    [ "$DEBUG_MODE" = "1" ] && echo "[DEBUG] $(log_ts) $*"
+}
+
+log_warn_debug() {
+    [ "$DEBUG_MODE" = "1" ] && echo "[WARN] $(log_ts) $*"
+}
 
 # 严苛环境下的规范 JSON 字段转义函数
 escape_json() {
@@ -542,7 +573,14 @@ PREV_CPU_IDLE=$(echo "$CPU_STAT" | awk '{print $2}'); PREV_CPU_IDLE=${PREV_CPU_I
 
 PREV_LOOP_TIME=$(date +%s)
 
-echo "[INFO] CF-Server-Monitor Probe Engine Started Successfully."
+if [ -z "${SERVER_ID:-}" ] || [ -z "${SECRET:-}" ] || [ -z "${WORKER_URL:-}" ]; then
+    echo "[ERROR] $(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S') 配置缺失: SERVER_ID/SECRET/WORKER_URL 不能为空"
+    exit 1
+fi
+
+log_info "CF-Server-Monitor Probe Engine Started Successfully."
+log_debug "Config: id=${SERVER_ID} url=${WORKER_URL} report_interval=${REPORT_INTERVAL}s collect_interval=${COLLECT_INTERVAL}s active_interval=${ACTIVE_INTERVAL}s ping=${PING_TYPE} reset_day=${RESET_DAY} secret_len=${#SECRET}"
+log_debug "Nodes: ct=${CT_NODE:-} cu=${CU_NODE:-} cm=${CM_NODE:-} bd=${BD_NODE:-}"
 
 # 核心架构升级：在这里脱离主循环，静默启动常驻网络 Worker 协程，无 wait 干扰
 run_network_worker &
@@ -556,6 +594,7 @@ while true; do
     
     # Worker 进程健康检查与自动重启
     if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+        log_warn_debug "Network worker exited; restarting"
         run_network_worker &
         WORKER_PID=$!
     fi
@@ -738,7 +777,23 @@ EOF
 EOF
 )
         fi
-        curl -s -o /dev/null -X POST -H "Content-Type: application/json" -d "$PAYLOAD" -m 4 --connect-timeout 2 "$WORKER_URL" 2>/dev/null || true
+        PAYLOAD_BYTES=$(printf "%s" "$PAYLOAD" | wc -c | awk '{print $1}')
+        log_debug "Report attempt: url=${WORKER_URL} samples=${SAMPLE_COUNT} payload_bytes=${PAYLOAD_BYTES}"
+
+        REPORT_RESPONSE_FILE="/dev/shm/.cf_probe_response.$$"
+        REPORT_ERROR_FILE="/dev/shm/.cf_probe_error.$$"
+        REPORT_HTTP_CODE=$(curl -sS -o "$REPORT_RESPONSE_FILE" -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "$PAYLOAD" -m 10 --connect-timeout 5 "$WORKER_URL" 2>"$REPORT_ERROR_FILE")
+        REPORT_CURL_EXIT=$?
+        case "$REPORT_HTTP_CODE" in ''|*[!0-9]*) REPORT_HTTP_CODE=000 ;; esac
+        REPORT_RESPONSE=$(head -c 300 "$REPORT_RESPONSE_FILE" 2>/dev/null | tr '\r\n' '  ')
+        REPORT_ERROR=$(head -c 300 "$REPORT_ERROR_FILE" 2>/dev/null | tr '\r\n' '  ')
+        rm -f "$REPORT_RESPONSE_FILE" "$REPORT_ERROR_FILE" 2>/dev/null || true
+
+        if [ "$REPORT_CURL_EXIT" -ne 0 ] || [ "$REPORT_HTTP_CODE" -lt 200 ] || [ "$REPORT_HTTP_CODE" -ge 300 ]; then
+            log_warn_debug "Report failed: curl_exit=${REPORT_CURL_EXIT} http=${REPORT_HTTP_CODE} samples=${SAMPLE_COUNT} payload_bytes=${PAYLOAD_BYTES} response=${REPORT_RESPONSE} error=${REPORT_ERROR}"
+        else
+            log_debug "Report success: http=${REPORT_HTTP_CODE} samples=${SAMPLE_COUNT} payload_bytes=${PAYLOAD_BYTES} response=${REPORT_RESPONSE}"
+        fi
         SAMPLES_JSON=""
         SAMPLE_COUNT=0
         LAST_REPORT_TIME=$LOOP_START_TIME
@@ -842,6 +897,7 @@ install_probe() {
     RESET_DAY=""
     RX_CORRECTION=""
     TX_CORRECTION=""
+    DEBUG_MODE=""
 
     for arg in "$@"; do
         case "$arg" in
@@ -858,6 +914,7 @@ install_probe() {
             -reset_day=*) RESET_DAY="${arg#-reset_day=}" ;;
             -rx_correction=*) RX_CORRECTION="${arg#-rx_correction=}" ;;
             -tx_correction=*) TX_CORRECTION="${arg#-tx_correction=}" ;;
+            -debug=*) DEBUG_MODE="${arg#-debug=}" ;;
         esac
     done
 
@@ -876,6 +933,7 @@ install_probe() {
             REPORT_INTERVAL=${REPORT_INTERVAL:-60}
             PING_TYPE=${PING_TYPE:-http}
             [ -z "$RESET_DAY" ] && RESET_DAY=1
+            DEBUG_MODE=$(normalize_debug_mode "${DEBUG_MODE:-0}")
             
             step "更新配置文件..."
             cat > "${CONFIG_FILE}" << EOF
@@ -890,6 +948,7 @@ CU_NODE="${CU_NODE:-}"
 CM_NODE="${CM_NODE:-}"
 BD_NODE="${BD_NODE:-}"
 RESET_DAY="${RESET_DAY}"
+DEBUG_MODE="${DEBUG_MODE}"
 EOF
             info "配置文件已更新: ${CONFIG_FILE}"
         else
@@ -907,6 +966,7 @@ EOF
                     CM_NODE) CM_NODE="${value%\"}"; CM_NODE="${CM_NODE#\"}" ;;
                     BD_NODE) BD_NODE="${value%\"}"; BD_NODE="${BD_NODE#\"}" ;;
                     RESET_DAY) RESET_DAY="${value%\"}"; RESET_DAY="${RESET_DAY#\"}" ;;
+                    DEBUG_MODE) DEBUG_MODE="${value%\"}"; DEBUG_MODE="${DEBUG_MODE#\"}" ;;
                 esac
             done < "${CONFIG_FILE}"
         fi
@@ -946,6 +1006,7 @@ EOF
         REPORT_INTERVAL=${REPORT_INTERVAL:-60}
         PING_TYPE=${PING_TYPE:-http}
         [ -z "$RESET_DAY" ] && RESET_DAY=1
+        DEBUG_MODE=$(normalize_debug_mode "${DEBUG_MODE:-0}")
 
         step "创建配置目录..."
         mkdir -p "${CONFIG_DIR}" 2>/dev/null || true
@@ -973,12 +1034,14 @@ CU_NODE="${CU_NODE:-}"
 CM_NODE="${CM_NODE:-}"
 BD_NODE="${BD_NODE:-}"
 RESET_DAY="${RESET_DAY}"
+DEBUG_MODE="${DEBUG_MODE}"
 EOF
         info "配置文件已生成: ${CONFIG_FILE}"
     fi
 
     COLLECT_INTERVAL=${COLLECT_INTERVAL:-0}
     REPORT_INTERVAL=${REPORT_INTERVAL:-60}
+    DEBUG_MODE=$(normalize_debug_mode "${DEBUG_MODE:-0}")
 
     if [ -n "${RX_CORRECTION}" ] || [ -n "${TX_CORRECTION}" ]; then
         step "应用流量校正..."
@@ -1019,6 +1082,7 @@ EOF
     echo -e "    ● 上报间隔    : ${REPORT_INTERVAL}秒"
     printf  '    ● 采样间隔    : %s秒\n' "${COLLECT_INTERVAL}"
     echo -e "    ● 探测类型    : ${PING_TYPE}"
+    echo -e "    ● 调试日志    : ${DEBUG_MODE}"
     [ -n "${RX_CORRECTION}" ] && echo -e "    ● 下行校正    : ${RX_CORRECTION}GB"
     [ -n "${TX_CORRECTION}" ] && echo -e "    ● 上行校正    : ${TX_CORRECTION}GB"
     if [ "${RESET_DAY}" = "0" ]; then
