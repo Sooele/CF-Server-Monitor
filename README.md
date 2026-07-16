@@ -290,21 +290,37 @@ irm https://你的项目.你的子域.workers.dev/cf-server-monitor.ps1 -OutFile
 
 根据您使用的安装方式，选择对应的升级方法：
 
-### 方式一：Cloudflare Workers 连接 GitHub 仓库
+### 方式一/方式二：Fork 后通过 GitHub 同步（推荐）
 
-由于 Cloudflare Workers 直接连接 GitHub 仓库，升级非常简单：
+无论你使用 Cloudflare Workers 连接 GitHub 仓库，还是使用 GitHub Action 自动部署，升级方式相同：同步上游仓库即可。
 
-1. 进入您 Fork 的 GitHub 仓库页面
+#### 自动同步（推荐）
+
+建议启用自动同步功能，系统会每天自动同步上游仓库的最新代码：
+
+1. 进入你 Fork 的 GitHub 仓库页面
+2. 点击 **Actions** 标签
+3. 首次使用时，点击 **"I understand my workflows, go ahead and enable them"** 启用 Actions
+4. 找到 **Upstream Sync** 工作流，点击进入
+5. 点击 **Run workflow** 手动触发一次，确认同步正常工作
+
+启用后，系统每天 UTC 0:00（北京时间 8:00）会自动检测上游仓库是否有新提交，有则自动合并到你的 `main` 分支。
+
+> **注意**：如果同步失败，提示"由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新"，请前往仓库页面点击 **Sync Fork** → **Update branch** 手动执行一次同步，然后再次启用 Actions。
+
+#### 手动同步
+
+如果需要立即同步，可以手动操作：
+
+1. 进入你 Fork 的 GitHub 仓库页面
 2. 点击 **Sync fork** → **Update branch** 同步上游更新
-3. Cloudflare Workers 会自动检测到代码变更并重新部署
 
-### 方式二：GitHub Action 自动部署
+或者在 **Actions** 标签页中点击 **Upstream Sync** → **Run workflow** 手动触发。
 
-与方式一类似，同步上游仓库后推送即可：
+**部署触发方式**：
 
-1. 同步上游仓库（参考方式一的步骤）
-2. 推送代码后 GitHub Actions 会自动触发部署
-3. 在仓库的 **Actions** 标签页查看部署进度
+- **Cloudflare Workers 连接 GitHub 仓库**：同步后 Cloudflare 会自动检测到代码变更并重新部署
+- **GitHub Action 自动部署**：同步后 GitHub Actions 会自动触发部署，可在 **Actions** 标签页查看进度
 
 ### 方式三：一键部署
 
@@ -315,7 +331,7 @@ irm https://你的项目.你的子域.workers.dev/cf-server-monitor.ps1 -OutFile
 3. 在 build command 中填入 `npm run build:frontend`
 4. 点击部署
 
-> **注意**：一键部署方式不方便同步更新，建议迁移到方式一或方式二。
+> **注意**：一键部署方式不方便同步更新，建议迁移到方式一。
 
 </details>
 
@@ -754,7 +770,8 @@ CF-Server-Monitor/
 └── .github/
     └── workflows/
         ├── deploy.yml             # GitHub Actions 自动部署到 Workers
-        └── deploy-github-page.yml # GitHub Pages 自动部署
+        ├── deploy-github-page.yml # GitHub Pages 自动部署
+        └── sync.yml               # 上游仓库自动同步
 ```
 
 </details>
